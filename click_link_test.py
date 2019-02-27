@@ -1,16 +1,26 @@
 from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
 from PIL import Image
 from io import BytesIO
 import cv2
 import numpy as np
+import os
+import shutil
 
 
-def main(url, image_location):
-    driver = webdriver.Firefox()
+def main(url, image_location, headless):
+    if os.path.exists(image_location):
+        shutil.rmtree(image_location)
+    os.mkdir(image_location)
+
+    options = Options()
+    if headless:
+        options.headless = True
+
+    driver = webdriver.Firefox(options=options)
     driver.get(url)
     elements = driver.find_elements_by_tag_name("a")
-    print (len(elements))
-
+    print(len(elements))
     count = 0
     for element in elements:
         count += 1
@@ -68,5 +78,4 @@ def compare_images(before, after):
 
 
 if __name__ == "__main__":
-    main("https://www.google.com/search?q=sonic&rlz=1C1CHBF_enUS782US782&oq=sonic&aqs=chrome..69i57j69i60l4j69i59.2223j"
-         "0j9&sourceid=chrome&ie=UTF-8", "images_sonic\\")
+    main("https://www.facebook.com/", "images_facebook\\", True)
