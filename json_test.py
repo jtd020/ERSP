@@ -16,9 +16,11 @@ dct = {}
 tally = 0
 num_files = 0
 
-path_parent = 'C:\windows10share\\batchtest1reduced'
+#Directory Path
+path_parent = 'C:\windows10share\\batchtest1'
 print (path_parent)
 
+#Tally up a:link selector
 for path, dirs, file in os.walk(path_parent):
     if len(file) == 0:
         continue
@@ -33,7 +35,7 @@ for path, dirs, file in os.walk(path_parent):
 
     dct = {}
 
-
+#Tally up a:visited selector
 for path, dirs, file in os.walk(path_parent):
     if len(file) == 0:
         continue
@@ -49,6 +51,7 @@ for path, dirs, file in os.walk(path_parent):
     dct = {}
 
 
+#Determine number of definitions
 dct_test = {}
 for path, dirs, file in os.walk(path_parent):
     visited = False
@@ -70,7 +73,6 @@ for path, dirs, file in os.walk(path_parent):
                 print(rule)
                 styles = (rule.style.cssText).split(";")
                 for definition in styles:
-                    attribute = definition.split(":")[0].replace("\n","")
                     if attribute not in dct_test:
                         dct_test[attribute] = 1
                     else:
