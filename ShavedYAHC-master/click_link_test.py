@@ -26,7 +26,6 @@ def main(url, image_location, headless):
     driver = webdriver.Firefox(options=options)
     wait = WebDriverWait(driver, 3)
     driver.get(url)
-    time.sleep(3)
     driver.maximize_window()
 
     # changes all links open in new tabs
@@ -65,7 +64,7 @@ def main(url, image_location, headless):
             wait.until(EC.visibility_of(el))
 
             # clicks on link
-            ActionChains(driver).key_down(Keys.CONTROL).click(el).key_up(Keys.CONTROL).send_keys(Keys.ESCAPE).perform()
+            ActionChains(driver).key_down(Keys.CONTROL).double_click(el).key_up(Keys.CONTROL).send_keys(Keys.ESCAPE).perform()
             time.sleep(1)
             driver.switch_to.window(driver.window_handles[0])
             driver.implicitly_wait(10)
