@@ -49,8 +49,8 @@ def main(url, image_location, headless):
     });""")
 
     # removes animated elements on page
-    three_minutes = 60 * 3
-    remove_animations(driver, three_minutes)
+    five_minutes = 60 * 5
+    remove_animations(driver, five_minutes)
     print("done removing animations")
     return
 
@@ -171,6 +171,8 @@ def remove_animations(driver, timeout):
     no_animation_count = 0
     prev_sec = time.time()
     curr_sec = prev_sec
+
+    remove_all_videos(driver)
     while timeout > curr_sec - prev_sec and no_animation_count < count_timeout:
         if animation_detected(driver):
             print("animation detected")
@@ -247,6 +249,7 @@ def remove_element_at(driver, x, y):
             parent = driver.execute_script("return arguments[0].parentNode", el)
             parent_name = driver.execute_script("return arguments[0].tagName", parent);
 
+
             if el_has_children:
                 continue
 
@@ -258,7 +261,6 @@ def remove_element_at(driver, x, y):
             continue
     return False
         
-
 def delete_element(driver, el):
     """ 
     Description:
@@ -279,12 +281,10 @@ def in_element_bounds(el, x, y):
     """ 
     Description:
       Checks if (x,y) is in the in the rectangular bounds of the given element.
-
     Args:
         el: element of interest.
 	x:  horizontal inquiry location
 	y:  horizontal inquirt location
-        
     Returns:
         True if (x,y) is exists on the given element, False otherwise.
     """
@@ -292,6 +292,23 @@ def in_element_bounds(el, x, y):
         if y >= el.location['y'] and y <= el.location['y'] + el.size['height']:
             return True
     return False
+
+def remove_all_videos(driver):
+    """ 
+    Description:
+        Removes all video tags from HTML DOM.
+    Args:
+      driver: Firefox browser.
+    Returns:
+        Nothing. 
+    """
+    web_elements = driver.find_elements_by_tag_name("video")
+    for el in web_elements:
+        try:
+                delete_element(driver, el)
+        except:
+            continue
+
 
 
 def make_directory(image_location):
@@ -302,8 +319,9 @@ def make_directory(image_location):
 if __name__ == "__main__":
     #main("https://www.facebook.com", "images_facebook/", False)
     #main("https://www.cnn.com/", "images_cnn/", False)
+    #main("https://www.youtube.com/watch?v=qkx38lglFaA&feature=youtu.be", "images_micro_youtube/", False)
     main("https://www.leaflabs.com/", "images_leaflabs/", False)
     main("https://www.bluecompass.com/", "images_blue/", False)
-    #main("https://www.youtube.com/", "images_leaflabs/", False)
+    main("https://www.youtube.com/", "images_leaflabs/", False)
     main("https://www.javascript-fx.com/submitscripts/fireworks/", "images_fireworks/", False)
 
