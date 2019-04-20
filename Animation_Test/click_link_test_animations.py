@@ -179,8 +179,6 @@ def remove_animations(driver, timeout):
 
         curr_sec = time.time()
         no_animation_count += 1
-        print("no animation count: " + str(no_animation_count))
-
 
 def animation_detected(driver):
     """ 
