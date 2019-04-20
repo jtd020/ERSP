@@ -171,4 +171,4 @@ def compare_images(before, after):
 #         print (element.get_attribute('href'))
 
 if __name__ == "__main__":
-    main("https://www.youtube.com", "images_youtube\\", False)
+    main("https://www.youtube.com", "images_youtube", False)
