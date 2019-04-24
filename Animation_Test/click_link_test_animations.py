@@ -12,7 +12,11 @@ import numpy as np
 import os
 import shutil
 import time
+import csv
 
+animation_success_count = 0
+total_valid_urls = 0
+error_403_count = 0
 
 def main(url, image_location, headless):
     make_directory(image_location)
@@ -23,7 +27,13 @@ def main(url, image_location, headless):
 
     driver = webdriver.Firefox(options=options)
     wait = WebDriverWait(driver, 3)
-    driver.get(url)
+
+    try:
+        driver.get(url)
+    except:
+        close_browser(driver)
+        return False
+
     time.sleep(3)
     driver.maximize_window()
 
@@ -51,8 +61,24 @@ def main(url, image_location, headless):
     # removes animated elements on page
     five_minutes = 60 * 5
     remove_animations(driver, five_minutes)
+
+    # statistics
+    global animation_success_count
+    global total_valid_urls
+    global error_403_count
+
+    if "403 Forbidden" in driver.page_source:
+        error_403_count += 1
+        close_browser(driver)
+        return False
+
+    if not animation_detected(driver):
+        animation_success_count += 1
+    total_valid_urls += 1
+
     print("done removing animations")
-    return
+    close_browser(driver)
+    return True
 
     elements = driver.find_elements_by_tag_name("a")
     count = 0
@@ -107,13 +133,16 @@ def main(url, image_location, headless):
         os.remove(after)
 
     shutil.rmtree(image_location)
+    #close_browser(driver)
     for handle in driver.window_handles:
         driver.switch_to.window(handle)
         driver.close()
+    
+    return True
 
 
 def take_screenshot(image, location, size, name, image_location):
-    print('taking a screen shot')
+    #print('taking a screen shot')
     im = Image.open(BytesIO(image))
 
     left = location['x']
@@ -172,7 +201,11 @@ def remove_animations(driver, timeout):
     prev_sec = time.time()
     curr_sec = prev_sec
 
-    remove_all_videos(driver)
+    remove_all_tags(driver, "video")
+    remove_all_tags(driver, "img")
+    remove_cursor_flickering(driver)
+    
+    # attempt to remove animated elements
     while timeout > curr_sec - prev_sec and no_animation_count < count_timeout:
         if animation_detected(driver):
             print("animation detected")
@@ -249,7 +282,6 @@ def remove_element_at(driver, x, y):
             parent = driver.execute_script("return arguments[0].parentNode", el)
             parent_name = driver.execute_script("return arguments[0].tagName", parent);
 
-
             if el_has_children:
                 continue
 
@@ -293,35 +325,80 @@ def in_element_bounds(el, x, y):
             return True
     return False
 
-def remove_all_videos(driver):
+def remove_all_tags(driver, tag):
     """ 
     Description:
-        Removes all video tags from HTML DOM.
+        Removes all tags from HTML DOM.
     Args:
       driver: Firefox browser.
     Returns:
         Nothing. 
     """
-    web_elements = driver.find_elements_by_tag_name("video")
-    for el in web_elements:
+    video_elements = driver.find_elements_by_tag_name(tag)
+    for video in video_elements:
         try:
-                delete_element(driver, el)
+            delete_element(driver, video)
         except:
             continue
 
+def remove_cursor_flickering(driver):
+    """ 
+    Description:
+        Blurs the the active element animation
+    Args:
+      driver: Firefox browser.
+    Returns:
+        Nothing. 
+    """
+    driver.execute_script("document.activeElement.blur();");
 
+def close_browser(driver):
+    for handle in driver.window_handles:
+        driver.switch_to.window(handle)
+        driver.close()
 
 def make_directory(image_location):
     if os.path.exists(image_location):
         shutil.rmtree(image_location)
     os.mkdir(image_location)
 
+def print_stats_report(invalid_url_list): 
+    global total_valid_urls
+    global animation_success_count
+    global error_403_count
+    total_invalid_urls = len(invalid_url_list)
+
+    if total_valid_urls == 0:
+        return
+
+    print("\n----------------- Statistics Report -----------------") 
+    print("animation removal sucess rate: " + str(animation_success_count / total_valid_urls * 100) + "%")
+    print("total websites: " + str(total_valid_urls + total_invalid_urls))
+    print("valid websites: " + str(total_valid_urls))
+    print("invalid websites due to incorrect protocol: " + str(total_invalid_urls - error_403_count))
+    print("forbidden websites (error 403) : " + str(error_403_count))
+    print("percent of invalid websites encountered: " + str(total_invalid_urls / (total_valid_urls + total_invalid_urls) * 100) + "%")
+    print("invalid url list:")
+    for url in invalid_url_list:
+        print(url)
+    print("-----------------------------------------------------\n")
+
 if __name__ == "__main__":
-    #main("https://www.facebook.com", "images_facebook/", False)
-    #main("https://www.cnn.com/", "images_cnn/", False)
-    #main("https://www.youtube.com/watch?v=qkx38lglFaA&feature=youtu.be", "images_micro_youtube/", False)
-    main("https://www.leaflabs.com/", "images_leaflabs/", False)
-    main("https://www.bluecompass.com/", "images_blue/", False)
-    main("https://www.youtube.com/", "images_leaflabs/", False)
-    main("https://www.javascript-fx.com/submitscripts/fireworks/", "images_fireworks/", False)
+    invalid_url_list = []
+    count = 0
+
+    top_1m_csv = csv.DictReader(open("../top-1m.csv"))
+    for row in top_1m_csv:
+        if count == 500:
+            break
+
+        url = "https://" + row["domain"]
+        print(url)
+
+        if main(url, "website_data", True):
+          count += 1
+        else:
+          invalid_url_list.append(url)
+        
+        print_stats_report(invalid_url_list)
 
