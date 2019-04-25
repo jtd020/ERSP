@@ -367,10 +367,8 @@ def print_stats_report(invalid_url_list):
     global animation_success_count
     global error_403_count
     total_invalid_urls = len(invalid_url_list)
-
     if total_valid_urls == 0:
         return
-
     print("\n----------------- Statistics Report -----------------") 
     print("animation removal sucess rate: " + str(animation_success_count / total_valid_urls * 100) + "%")
     print("total websites: " + str(total_valid_urls + total_invalid_urls))
@@ -395,7 +393,7 @@ if __name__ == "__main__":
         url = "https://" + row["domain"]
         print(url)
 
-        if main(url, "website_data", True):
+        if main(url, "website_data", False):
           count += 1
         else:
           invalid_url_list.append(url)
