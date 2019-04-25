@@ -1,0 +1,120 @@
+# vim: set tw=99:
+
+import argparse
+import os
+import sys
+import traceback
+from urllib.parse import urlsplit
+
+from shaved_yahc import YAHCFirefoxCrawler
+from shaved_yahc import YAHCChromeCrawler
+
+def validate_url(url):
+    addr = urlsplit(url)
+    if not addr.scheme:
+        return False
+    if not addr.hostname:
+        return False
+    return True
+
+def create_crawler(browser):
+    if browser == 'firefox':
+        return YAHCFirefoxCrawler(**config)
+    elif browser == 'chrome':
+        return YAHCChromeCrawler(**config)
+    else:
+        raise ValueError('Unknown browser name: {}'.format(browser))
+
+parser = argparse.ArgumentParser(description='ShavedYAHC Crawler')
+parser.add_argument('--browser', choices=['firefox', 'chrome'], required=True)
+parser.add_argument('--store-location', action='store', required=True,
+        help='path to directory where generated crawl data will be stored')
+parser.add_argument('--url', dest='urls', action='append',
+        help='URL of a page to crawl')
+parser.add_argument('--url-file', dest='url_files', action='append', type=argparse.FileType('r'),
+        help='path to a file containing a list of URLs to crawl, one per line')
+parser.add_argument('--page-load-time', action='store', type=int, default=10,
+        help='seconds to wait to allow each page to fully load')
+parser.add_argument('--reset-profile-time', action='store', type=int, default=10,
+        help='maximum seconds to allow for resetting the browser profile after crawling a page')
+parser.add_argument('--no-headless', action='store_true', default=False,
+        help='do not run in headless mode')
+parser.add_argument('--save-source', action='store_true', default=False,
+        help='save the source of crawled pages')
+parser.add_argument('--save-screenshots', action='store_true', default=False,
+        help='save a screenshot of each crawled page')
+parser.add_argument('--save-cookies', action='store_true', default=False,
+        help='save cookies for each crawled page')
+parser.add_argument('--save-links', action='store_true', default=False,
+        help='save the set of all URLs linked from each page')
+parser.add_argument('--save-js', action='store_true', default=False,
+        help='save script info for each crawled page')
+parser.add_argument('--save-css', action='store_true', default=False,
+        help='save style info for each crawled page')
+parser.add_argument('--save-computedstyle', action='store_true', default=False,
+        help='save computed style for each crawled page')
+parser.add_argument('--quiet', action='store_true', default=False,
+        help='suppress log output')
+
+try:
+    args = parser.parse_args()
+
+    config = {
+        'store_location': os.path.abspath(args.store_location),
+        'page_load_time': args.page_load_time,
+        'reset_profile_time': args.reset_profile_time,
+        'headless': not args.no_headless,
+        'save_source': args.save_source,
+        'save_screenshots': args.save_screenshots,
+        'save_cookies': args.save_cookies,
+        'save_links': args.save_links,
+        'save_js': args.save_js,
+        'save_css': args.save_css,
+        'save_computedstyle': args.save_computedstyle
+    }
+
+    urls = args.urls if args.urls else []
+    if args.url_files:
+        for url_file in args.url_files:
+            for line in url_file:
+                url = line.strip()
+                if url:
+                    urls.append(url)
+
+    found_malformed_url = False
+    for url in urls:
+        if not validate_url(url):
+            print('Malformed URL: {}'.format(url), file=sys.stderr)
+            found_malformed_url = True
+
+    if not args.quiet:
+        print('(Launching browser)')
+
+    failed_urls = []
+    caught_crawl_error = False
+    f=open(args.store_location + "errors.txt", "a")
+    try:
+        with create_crawler(args.browser) as crawler:
+            for url in urls:
+                if not args.quiet:
+                    print('Crawling URL {}: {}'.format(crawler.urls_crawled, url))
+                    try:
+                        crawler.crawl_url(url)
+                    except KeyboardInterrupt:
+                        raise
+                    except:
+                        print('{} {}'.format(crawler.urls_crawled, url))
+                        url_name = '{} {}'.format(crawler.urls_crawled, url)
+                        failed_urls.append(url_name)
+                        print(url)
+                        traceback.print_exc()
+                        print(file=sys.stderr)
+                        f.write(url_name + "\n")
+                        caught_crawl_error = True
+    finally:
+        print('(Shutting down)')
+        print(failed_urls)
+    if caught_crawl_error:
+        sys.exit(1)
+except KeyboardInterrupt:
+    sys.exit(1)
