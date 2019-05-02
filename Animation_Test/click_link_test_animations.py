@@ -16,65 +16,51 @@ import csv
 
 animation_success_count = 0
 total_valid_urls = 0
-error_403_count = 0
+failed_animation_removal_list = []
+broken_url_list = []
+error_403_url_list = []
 
 def main(url, image_location, headless):
+    global animation_success_count
+    global total_valid_urls
+    global failed_animation_removal_list
+    global broken_url_list
+    global error_403_url_list
     make_directory(image_location)
-
     options = Options()
+
     if headless:
         options.headless = True
 
+    delay_sec = 3
     driver = webdriver.Firefox(options=options)
-    wait = WebDriverWait(driver, 3)
+    wait = WebDriverWait(driver, delay_sec)
 
     try:
         driver.get(url)
     except:
+        broken_url_list.append(url)
         close_browser(driver)
         return False
 
-    time.sleep(3)
+    time.sleep(delay_sec)
     driver.maximize_window()
 
-    # changes all links open in new tabs
-    driver.execute_script("""
-        var items = document.getElementsByTagName("a");
-        Array.from(items).forEach(function(item){
-        var attributes = Object.values(item.attributes);
-        for (i=0; i < attributes.length; i++) {
-            console.log(typeof attributes[i].nodeName.toString());
-            if (attributes[i].nodeName.toString() != "href" && attributes[i].nodeName.toString() != "class") {
-                item.removeAttribute(attributes[i].nodeName.toString());
-            }
-        }
-        item.setAttribute("target", "_blank");
-        var new_element = item.cloneNode(true);
-        item.parentNode.replaceChild(new_element, item); 
-        item.addEventListener("click", function(event){
-            event.stopPropagation();
-            event.preventDefault();
-            return false;
-        });
-    });""")
+    mutate_links_to_open_new_tabs(driver)
 
-    # removes animated elements on page
-    five_minutes = 60 * 5
-    remove_animations(driver, five_minutes)
-
-    # statistics
-    global animation_success_count
-    global total_valid_urls
-    global error_403_count
+    timeout = 60 * 5
+    remove_animations(driver, timeout)
 
     if "403 Forbidden" in driver.page_source:
-        error_403_count += 1
+        error_403_url_list.append(url)
         close_browser(driver)
         return False
 
-    if not animation_detected(driver):
-        animation_success_count += 1
-    total_valid_urls += 1
+    if animation_detected(driver, delay_sec):
+        failed_animation_removal_list.append(url)
+        return False
+
+    animation_success_count += 1
 
     print("done removing animations")
     close_browser(driver)
@@ -133,13 +119,30 @@ def main(url, image_location, headless):
         os.remove(after)
 
     shutil.rmtree(image_location)
-    #close_browser(driver)
-    for handle in driver.window_handles:
-        driver.switch_to.window(handle)
-        driver.close()
-    
+    close_browser(driver)
     return True
 
+def mutate_links_to_open_new_tabs(driver):
+    # changes all links open in new tabs
+    driver.execute_script("""
+        var items = document.getElementsByTagName("a");
+        Array.from(items).forEach(function(item){
+        var attributes = Object.values(item.attributes);
+        for (i=0; i < attributes.length; i++) {
+            console.log(typeof attributes[i].nodeName.toString());
+            if (attributes[i].nodeName.toString() != "href" && attributes[i].nodeName.toString() != "class") {
+                item.removeAttribute(attributes[i].nodeName.toString());
+            }
+        }
+        item.setAttribute("target", "_blank");
+        var new_element = item.cloneNode(true);
+        item.parentNode.replaceChild(new_element, item);
+        item.addEventListener("click", function(event){
+            event.stopPropagation();
+            event.preventDefault();
+            return false;
+        });
+    });""")
 
 def take_screenshot(image, location, size, name, image_location):
     #print('taking a screen shot')
@@ -215,12 +218,13 @@ def remove_animations(driver, timeout):
         curr_sec = time.time()
         no_animation_count += 1
 
-def animation_detected(driver):
+def animation_detected(driver, delay_sec = 1):
     """ 
     Description:
         Removes animated objects on website using image differencing. 
     Args:
         driver:  Firefox browser.
+	delay_sec: Seconds delay between the before and after screenshot.
     Returns:
         True if the before and after screenshot are different, False otherwise.
     """
@@ -228,7 +232,7 @@ def animation_detected(driver):
     location = {'x': 0, 'y': 0}
     window_size = driver.get_window_size()
     before = take_screenshot(driver.get_screenshot_as_png(), location, window_size, "animation_before", "animation/")
-    time.sleep(1)
+    time.sleep(delay_sec)
     after  = take_screenshot(driver.get_screenshot_as_png(), location, window_size, "animation_after", "animation/")
     return compare_images(before, after)
 
@@ -362,27 +366,36 @@ def make_directory(image_location):
         shutil.rmtree(image_location)
     os.mkdir(image_location)
 
-def print_stats_report(invalid_url_list): 
-    global total_valid_urls
+def print_stats_report(): 
     global animation_success_count
-    global error_403_count
-    total_invalid_urls = len(invalid_url_list)
+    global total_valid_urls
+    global failed_animation_removal_list
+    global broken_url_list
+    global error_403_url_list
+    total_valid_urls  = animation_success_count + len(failed_animation_removal_list)
+    total_broken_urls = len(broken_url_list)
+    total_error_403_urls = len(error_403_url_list)
     if total_valid_urls == 0:
         return
     print("\n----------------- Statistics Report -----------------") 
     print("animation removal sucess rate: " + str(animation_success_count / total_valid_urls * 100) + "%")
-    print("total websites: " + str(total_valid_urls + total_invalid_urls))
+    print("total websites: " + str(total_valid_urls + total_broken_urls + total_error_403_urls))
     print("valid websites: " + str(total_valid_urls))
-    print("invalid websites due to incorrect protocol: " + str(total_invalid_urls - error_403_count))
-    print("forbidden websites (error 403) : " + str(error_403_count))
-    print("percent of invalid websites encountered: " + str(total_invalid_urls / (total_valid_urls + total_invalid_urls) * 100) + "%")
-    print("invalid url list:")
-    for url in invalid_url_list:
+    print("invalid websites due to incorrect protocol: " + str(total_broken_urls))
+    print("forbidden websites (error 403) : " + str(total_error_403_urls))
+    print("percent of invalid websites encountered: " + str(total_broken_urls / (total_valid_urls + total_broken_urls) * 100) + "%")
+    print("\nbroken url list:")
+    for url in broken_url_list:
+        print(url)
+    print("\nerror 403 url list:")
+    for url in error_403_url_list:
+        print(url)
+    print("\nfailed animation removal list:")
+    for url in failed_animation_removal_list:
         print(url)
     print("-----------------------------------------------------\n")
 
 if __name__ == "__main__":
-    invalid_url_list = []
     count = 0
 
     top_1m_csv = csv.DictReader(open("../top-1m.csv"))
@@ -393,10 +406,7 @@ if __name__ == "__main__":
         url = "https://" + row["domain"]
         print(url)
 
-        if main(url, "website_data", False):
+        if main(url, "website_data/", False):
           count += 1
-        else:
-          invalid_url_list.append(url)
-        
-        print_stats_report(invalid_url_list)
 
+        print_stats_report()
