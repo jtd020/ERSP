@@ -403,7 +403,7 @@ if __name__ == "__main__":
         if count == 500:
             break
 
-        url = "https://" + row["domain"]
+        url = "http://" + row["domain"]
         print(url)
 
         if main(url, "website_data/", False):
