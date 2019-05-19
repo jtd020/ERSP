@@ -480,7 +480,7 @@ if __name__ == "__main__":
     num_websites_to_crawl = 20
     start = time.time()
     print(start)
-    with open('top_mil_chunk4.csv', newline='\n') as csvfile:
+    with open('csv_files/top_mil_chunk4.csv', newline='\n') as csvfile:
         data = list(csv.reader(csvfile))
     urls_list = [("https://www." + url[1], "images_" + url[1] + "/", url[0]) for url in data]
     i=0
