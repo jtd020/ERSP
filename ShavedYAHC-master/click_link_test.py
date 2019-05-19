@@ -1,3 +1,9 @@
+import csv
+import multiprocessing
+import sys
+import logging
+
+from multiprocessing import log_to_stderr, get_logger
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
@@ -14,8 +20,14 @@ import os
 import shutil
 import time
 
+animation_success_count = 0
+total_valid_urls = 0
+failed_animation_removal_list = []
+broken_url_list = []
+error_403_url_list = []
 
-def main(url, image_location, headless):
+
+def main(url_list, headless=True):
     """
     Description:
         Cleans, scrapes, and clicks every link on a given URL
@@ -26,6 +38,10 @@ def main(url, image_location, headless):
     Returns:
         String
     """
+
+    url = url_list[0]
+    image_location = url_list[1]
+    rank = url_list[2]
     detected = False
 
     make_directory(image_location)
@@ -37,19 +53,22 @@ def main(url, image_location, headless):
     browser_profile = webdriver.FirefoxProfile()
     browser_profile.set_preference("dom.webnotifications.enabled", False)
 
-    driver = webdriver.Firefox(options=options, firefox_profile=browser_profile)
+    try:
+        driver = webdriver.Firefox(options=options, firefox_profile=browser_profile)
+    except:
+        sys.stdout.flush()
+        print (str(rank) + " " + url + " " + str(detected))
+        return str(rank) + " " + url + " " + str(detected)
 
-    wait = WebDriverWait(driver, 10)
     try:
         driver.get(url)
     except:
-        shutil.rmtree(image_location)
-        delete_all_tabs(driver)
-        return detected
+        sys.stdout.flush()
+        print(str(rank) + " " + url + " " + str(detected))
+        driver.quit()
+        return str(rank) + " " + url + " " + str(detected)
 
-    driver.maximize_window()
-
-    # changes all links open in new tabs
+    wait = WebDriverWait(driver, 10)
     driver.execute_script("""
         var items = document.getElementsByTagName("a");
         Array.from(items).forEach(function(item){
@@ -61,95 +80,112 @@ def main(url, image_location, headless):
             }
             item.setAttribute("target", "_blank");
     });""")
-    five_minutes = 60 * 1
-    remove_animations(driver, five_minutes)
-    print("removed animations")
+    five_minutes = 60 * 2
+    try:
+        remove_animations(driver, five_minutes, str(url[12:]))
+    except:
+        try:
+            driver.quit()
+        except:
+            print ("Driver cannot close")
+        return str(rank) + " " + url + " Failed"
+
+    driver.maximize_window()
+
+    # changes all links open in new tabs
+
+    if "403 Forbidden" in driver.page_source:
+        error_403_url_list.append(url)
+        sys.stdout.flush()
+        print (str(rank) + " " + url + " Failed")
+        driver.quit()
+        return str(rank) + " " + url + " Failed"
 
     elements = driver.find_elements_by_tag_name("a")
     count = 0
+
+    prev_sec = time.time()
+    timeout = 60 * 3
     for i in range(0, len(elements)):
+        curr_sec = time.time()
+        if timeout < (curr_sec - prev_sec):
+            break
         count += 1
-        print(count)
 
         el = elements[i]
         try:
+            switch_to_old_window(driver)
             # skip element without href attribute
             if el.get_attribute("href") is None:
-                print("no href")
                 continue
 
             # skip element that's an anchor or has calls a javascript function
             href = parse_outer_html_href(el)
             if href[0:1] == "#" or "javascript" in href:
-                print("Element is an anchor")
                 continue
 
             # skip element that is not displayed
             if not el.is_displayed():
-                print("Element is not displayed")
+                continue
+
+            # check if element is not enabled
+            if not el.is_enabled():
+                ActionChains(driver).key_down(Keys.CONTROL).click(el).key_up(Keys.CONTROL).send_keys(
+                    Keys.ESCAPE).perform()
                 continue
 
             location = el.location
             size = el.size
 
-            # check if element is not enabled
-            if not el.is_enabled():
-                print ("Element is not enabled")
-                ActionChains(driver).key_down(Keys.CONTROL).click(el).key_up(Keys.CONTROL).send_keys(
-                    Keys.ESCAPE).perform()
-                continue
-
-            time.sleep(1)
-            before = take_screenshot(driver.get_screenshot_as_png(), location, size, "before" + str(count), image_location)
+            before = take_screenshot(driver.get_screenshot_as_png(), location, size, "before" + str(count),
+                                     image_location)
 
             # clicks on link
             ActionChains(driver).key_down(Keys.CONTROL).click(el).key_up(Keys.CONTROL).send_keys(Keys.ESCAPE).perform()
-            driver.implicitly_wait(10)
-
+            # driver.implicitly_wait(10)
 
             blank_element = driver.find_element_by_tag_name("body")
             ActionChains(driver).context_click(blank_element).perform()
-            ActionChains(driver).move_by_offset(location['x']*(-1), location['y']*(-1)).perform()
+            # ActionChains(driver).move_to_element(el).move_by_offset(location['x']*(-1), location['y']*(-1)).perform()
             time.sleep(2)
 
             wait.until(EC.visibility_of(el))
             if not el.is_displayed():
-                print("Element has disappeared")
                 continue
 
-            driver.switch_to.window(driver.window_handles[0])
-            driver.implicitly_wait(10)
-            driver.delete_all_cookies()
-            driver.implicitly_wait(10)
+            switch_to_old_window(driver)
+            # driver.implicitly_wait(10)
+            # driver.implicitly_wait(10)
 
             delete_all_tabs(driver)
 
             ActionChains(driver).move_to_element(el)
-            driver.switch_to.window(driver.window_handles[0])
+            switch_to_old_window(driver)
 
             # re-grab element location on screen
             location = el.location
-
-        except:
-            delete_all_tabs(driver)
-            driver.implicitly_wait(10)
-            driver.switch_to.window(driver.window_handles[0])
+            after = take_screenshot(driver.get_screenshot_as_png(), location, size, "after" + str(count), image_location)
+        except Exception as e:
+            # delete_all_tabs(driver)
+            # driver.implicitly_wait(5)
+            switch_to_old_window(driver)
             continue
 
-        after = take_screenshot(driver.get_screenshot_as_png(), location, size, "after" + str(count), image_location)
-        if compare_images(before, after):
+        make_directory("comparison_" + ''.join(e for e in url if e.isalnum()) +"/")
+        if compare_images(before, after, "comparision_" + ''.join(e for e in url if e.isalnum()),
+                          "comparison_" + ''.join(e for e in url if e.isalnum()) +"/"):
             detected = True
             print("Feature detected")
             break
-        os.remove(before)
-        os.remove(after)
+    #     os.remove(before)
+    #     os.remove(after)
+    #
+    # shutil.rmtree(image_location)
 
-    shutil.rmtree(image_location)
-    for handle in driver.window_handles:
-        driver.switch_to.window(handle)
-        driver.close()
-
-    return detected
+    sys.stdout.flush()
+    print(str(rank) + " " + url + " " + str(detected))
+    driver.quit()
+    return str(rank) + " " + url + " " + str(detected)
 
 
 def delete_all_tabs(driver):
@@ -173,7 +209,7 @@ def take_screenshot(image, location, size, name, image_location):
     return str(image_location + name + ".png")
 
 
-def compare_images(before, after):
+def compare_images(before, after, name, image_location):
     before_image = cv2.imread(before)
     after_image = cv2.imread(after)
     difference = cv2.subtract(after_image, before_image)
@@ -182,9 +218,9 @@ def compare_images(before, after):
     if result:
         return False
     else:
-        cv2.imwrite("result.png", difference)
-        cv2.imwrite("before.png", before_image)
-        cv2.imwrite("after.png", after_image)
+        cv2.imwrite(image_location + "result" + name + ".png", difference)
+        # cv2.imwrite(image_location + "before" + name + ".png", before_image)
+        # cv2.imwrite(image_location + "after" + name + ".png", after_image)
         return True
 
 
@@ -206,7 +242,7 @@ def resize_image(image_location, new_size):
     im.save(image_location)
 
 
-def remove_animations(driver, timeout):
+def remove_animations(driver, timeout, url):
     """
     Description:
         Removes animated objects on website using image differencing.
@@ -227,34 +263,37 @@ def remove_animations(driver, timeout):
 
     # attempt to remove animated elements
     while timeout > curr_sec - prev_sec and no_animation_count < count_timeout:
-        if animation_detected(driver):
-            print("animation detected")
-            remove_animated_element(driver)
+        if animation_detected(driver, ''.join(e for e in url if e.isalnum())):
+            remove_animated_element(driver, "animation_" + ''.join(e for e in url if e.isalnum()),
+                                    "animation/" + "animation_" + ''.join(e for e in url if e.isalnum()) + "/")
             no_animation_count = 0
 
         curr_sec = time.time()
         no_animation_count += 1
 
 
-def animation_detected(driver):
+def animation_detected(driver, url, delay_sec=1):
     """
     Description:
         Removes animated objects on website using image differencing.
     Args:
         driver:  Firefox browser.
+	delay_sec: Seconds delay between the before and after screenshot.
     Returns:
         True if the before and after screenshot are different, False otherwise.
     """
-    make_directory("animation/")
+    make_directory("animation/" + "animation_" + url + "/")
     location = {'x': 0, 'y': 0}
     window_size = driver.get_window_size()
-    before = take_screenshot(driver.get_screenshot_as_png(), location, window_size, "animation_before", "animation/")
-    time.sleep(1)
-    after = take_screenshot(driver.get_screenshot_as_png(), location, window_size, "animation_after", "animation/")
-    return compare_images(before, after)
+    before = take_screenshot(driver.get_screenshot_as_png(), location, window_size, "animation_before" + url,
+                             "animation/" + "animation_" + url + "/")
+    time.sleep(delay_sec)
+    after = take_screenshot(driver.get_screenshot_as_png(), location, window_size, "animation_after" + url,
+                            "animation/" + "animation_" + url + "/")
+    return compare_images(before, after, "animation_" + url, "animation/" + "animation_" + url + "/")
 
 
-def remove_animated_element(driver):
+def remove_animated_element(driver, name, image_location):
     """
     Description:
         From the image differencing algorithm, this function finds the first
@@ -266,11 +305,11 @@ def remove_animated_element(driver):
     Returns:
         Nothing.
     """
-    if not os.path.exists("image_comparison/result.png"):
+    if not os.path.exists(image_location + "result" + name + ".png"):
         return
 
-    resize_image("image_comparison/result.png", driver.get_window_size())
-    im = Image.open("image_comparison/result.png")
+    resize_image(image_location + "result" + name + ".png", driver.get_window_size())
+    im = Image.open(image_location + "result" + name + ".png")
     width = im.size[0]
     height = im.size[1]
     pixel = im.load()
@@ -296,7 +335,7 @@ def remove_element_at(driver, x, y):
     Returns:
         True if an element was removed, False otherwise.
     """
-    print("at (" + str(x) + ", " + str(y) + ")")
+    # print("at (" + str(x) + ", " + str(y) + ")")
     web_elements = driver.find_elements_by_tag_name("*")
     for el in web_elements:
         try:
@@ -386,10 +425,23 @@ def close_browser(driver):
 
 
 def make_directory(image_location):
-    if os.path.exists(image_location):
-        shutil.rmtree(image_location)
-    os.mkdir(image_location)
+    for retry in range(100):
+        try:
+            if os.path.exists(image_location):
+                shutil.rmtree(image_location)
+            os.mkdir(image_location)
+            break
+        except:
+            continue
 
+
+def switch_to_old_window(driver):
+    for retry in range(100):
+        try:
+            driver.switch_to.window(driver.window_handles[0])
+            break
+        except:
+            continue
 
 def parse_outer_html_href(el):
     soup = BeautifulSoup(el.get_attribute("outerHTML"), features="html.parser")
@@ -423,5 +475,26 @@ def print_stats_report(invalid_url_list):
 
 
 if __name__ == "__main__":
-    main("https://www.funimation.com", "images_funi\\", False)
 
+    # main(("https://www.google.com/search?q=sonic&rlz=1C1CHBF_enUS782US782&oq=sonic&aqs=chrome..69i57j69i60l3j69i59l2.760j0j4&sourceid=chrome&ie=UTF-8", "images_sonic\\"))
+    num_websites_to_crawl = 20
+    start = time.time()
+    print(start)
+    with open('top_mil_chunk4.csv', newline='\n') as csvfile:
+        data = list(csv.reader(csvfile))
+    urls_list = [("https://www." + url[1], "images_" + url[1] + "/", url[0]) for url in data]
+    i=0
+    while i < len(urls_list):
+        urls_list_subset = urls_list[i:i+num_websites_to_crawl]
+        print(urls_list_subset)
+        with multiprocessing.Pool(processes=10) as pool:
+            processes = pool.map(main, urls_list_subset)
+            pool.close()
+            pool.join()
+        for process in processes:
+            with open('url_results.txt', 'a') as f:
+                f.write(str(process) + "\n")
+                f.close()
+        i += num_websites_to_crawl
+        print(processes)
+    print(time.time() - start)
