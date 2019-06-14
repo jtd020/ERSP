@@ -1,15 +1,13 @@
 import csv
 import multiprocessing
 import sys
-import logging
+import argparse
 
-from multiprocessing import log_to_stderr, get_logger
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from PIL import Image
 from io import BytesIO
 from bs4 import BeautifulSoup
@@ -43,31 +41,41 @@ def main(url_list, headless=True):
     image_location = url_list[1]
     rank = url_list[2]
     detected = False
+    num_links = 0
 
-    make_directory(image_location)
+    if not make_directory(image_location):
+        return str(rank) + " " + url + " " + str(detected)
 
     options = Options()
     if headless:
         options.headless = True
 
     browser_profile = webdriver.FirefoxProfile()
+    # browser_profile.add_extension(extension='adblock_plus-3.5.2-an+fx.xpi')
+    # browser_profile.set_preference("extensions.adblockplus.currentVersion", "3.5.2")
     browser_profile.set_preference("dom.webnotifications.enabled", False)
 
-    try:
-        driver = webdriver.Firefox(options=options, firefox_profile=browser_profile)
-    except:
-        sys.stdout.flush()
-        print (str(rank) + " " + url + " " + str(detected))
-        return str(rank) + " " + url + " " + str(detected)
+    for retry in range(0,100):
+        try:
+            driver = webdriver.Firefox(options=options, firefox_profile=browser_profile)
+            break
+        except:
+            sys.stdout.flush()
+            if retry == 99:
+                print(str(rank) + " " + url + " failed_driver" + " " + str(num_links))
+                return str(rank) + " " + url + " failed_driver" + " " + str(num_links)
+            continue
+    # driver.set_page_load_timeout(30)
+    # driver.install_addon(os.path.dirname(__file__) + r'\\adblock_plus-3.5.2-an+fx.xpi', temporary=True)
 
     try:
         driver.get(url)
     except:
         sys.stdout.flush()
-        print(str(rank) + " " + url + " " + str(detected))
+        print(str(rank) + " " + url + " " + " failed_url" + " " + str(num_links))
         driver.quit()
-        return str(rank) + " " + url + " " + str(detected)
-
+        return str(rank) + " " + url + " failed_url" + " " + str(num_links)
+    print (str(len(driver.find_elements_by_tag_name("a"))) + url)
     wait = WebDriverWait(driver, 10)
     driver.execute_script("""
         var items = document.getElementsByTagName("a");
@@ -80,15 +88,16 @@ def main(url_list, headless=True):
             }
             item.setAttribute("target", "_blank");
     });""")
-    five_minutes = 60 * 2
+    num_minutes = 60 * 2
     try:
-        remove_animations(driver, five_minutes, str(url[12:]))
+        remove_animations(driver, num_minutes, str(url[12:]))
     except:
         try:
             driver.quit()
         except:
             print ("Driver cannot close")
-        return str(rank) + " " + url + " Failed"
+        print(str(rank) + " " + url + " " + " failed_animation" + " " + str(num_links))
+        return str(rank) + " " + url + " failed_animation" + " " + str(num_links)
 
     driver.maximize_window()
 
@@ -97,24 +106,24 @@ def main(url_list, headless=True):
     if "403 Forbidden" in driver.page_source:
         error_403_url_list.append(url)
         sys.stdout.flush()
-        print (str(rank) + " " + url + " Failed")
+        print (str(rank) + " " + url + " failed_403" + " " + str(num_links))
         driver.quit()
-        return str(rank) + " " + url + " Failed"
+        return str(rank) + " " + url + " failed_403" + " " + str(num_links)
 
     elements = driver.find_elements_by_tag_name("a")
     count = 0
-
+    num_links = len(elements)
     prev_sec = time.time()
-    timeout = 60 * 3
+    timeout = 60 * 4
     for i in range(0, len(elements)):
-        curr_sec = time.time()
-        if timeout < (curr_sec - prev_sec):
+        if timeout < (time.time() - prev_sec):
             break
         count += 1
 
         el = elements[i]
         try:
-            switch_to_old_window(driver)
+            if not switch_to_old_window(driver):
+                break
             # skip element without href attribute
             if el.get_attribute("href") is None:
                 continue
@@ -136,7 +145,8 @@ def main(url_list, headless=True):
 
             location = el.location
             size = el.size
-
+            if timeout < (time.time() - prev_sec):
+                break
             before = take_screenshot(driver.get_screenshot_as_png(), location, size, "before" + str(count),
                                      image_location)
 
@@ -149,29 +159,47 @@ def main(url_list, headless=True):
             # ActionChains(driver).move_to_element(el).move_by_offset(location['x']*(-1), location['y']*(-1)).perform()
             time.sleep(2)
 
-            wait.until(EC.visibility_of(el))
-            if not el.is_displayed():
-                continue
+            if timeout < (time.time() - prev_sec):
+                break
 
-            switch_to_old_window(driver)
+            if not switch_to_old_window(driver):
+                break
             # driver.implicitly_wait(10)
             # driver.implicitly_wait(10)
 
             delete_all_tabs(driver)
 
+            if timeout < (time.time() - prev_sec):
+                break
+
             ActionChains(driver).move_to_element(el)
-            switch_to_old_window(driver)
+            if not switch_to_old_window(driver):
+                break
 
             # re-grab element location on screen
             location = el.location
+            if timeout < (time.time() - prev_sec):
+                break
+
+            if not el.is_displayed():
+                continue
+
             after = take_screenshot(driver.get_screenshot_as_png(), location, size, "after" + str(count), image_location)
+
         except Exception as e:
             # delete_all_tabs(driver)
             # driver.implicitly_wait(5)
-            switch_to_old_window(driver)
+            if timeout < (time.time() - prev_sec):
+                break
+            if not switch_to_old_window(driver):
+                break
             continue
 
-        make_directory("comparison_" + ''.join(e for e in url if e.isalnum()) +"/")
+        if timeout < (time.time() - prev_sec):
+            break
+        if not make_directory("comparison_" + ''.join(e for e in url if e.isalnum()) +"/"):
+            break
+
         if compare_images(before, after, "comparision_" + ''.join(e for e in url if e.isalnum()),
                           "comparison_" + ''.join(e for e in url if e.isalnum()) +"/"):
             detected = True
@@ -181,11 +209,10 @@ def main(url_list, headless=True):
     #     os.remove(after)
     #
     # shutil.rmtree(image_location)
-
     sys.stdout.flush()
-    print(str(rank) + " " + url + " " + str(detected))
+    print(str(rank) + " " + url + " " + str(detected) + " " + str(num_links))
     driver.quit()
-    return str(rank) + " " + url + " " + str(detected)
+    return str(rank) + " " + url + " " + str(detected) + " " + str(num_links)
 
 
 def delete_all_tabs(driver):
@@ -214,7 +241,6 @@ def compare_images(before, after, name, image_location):
     after_image = cv2.imread(after)
     difference = cv2.subtract(after_image, before_image)
     result = not np.any(difference)
-
     if result:
         return False
     else:
@@ -257,6 +283,8 @@ def remove_animations(driver, timeout, url):
     prev_sec = time.time()
     curr_sec = prev_sec
 
+    driver.implicitly_wait(timeout * 2)
+
     remove_all_tags(driver, "video")
     remove_all_tags(driver, "img")
     remove_cursor_flickering(driver)
@@ -264,10 +292,13 @@ def remove_animations(driver, timeout, url):
     # attempt to remove animated elements
     while timeout > curr_sec - prev_sec and no_animation_count < count_timeout:
         if animation_detected(driver, ''.join(e for e in url if e.isalnum())):
+            if timeout < time.time() - prev_sec:
+                break
             remove_animated_element(driver, "animation_" + ''.join(e for e in url if e.isalnum()),
                                     "animation/" + "animation_" + ''.join(e for e in url if e.isalnum()) + "/")
+            if timeout < time.time() - prev_sec:
+                break
             no_animation_count = 0
-
         curr_sec = time.time()
         no_animation_count += 1
 
@@ -430,18 +461,22 @@ def make_directory(image_location):
             if os.path.exists(image_location):
                 shutil.rmtree(image_location)
             os.mkdir(image_location)
+            return True
             break
         except:
             continue
+    return False
 
 
 def switch_to_old_window(driver):
     for retry in range(100):
         try:
             driver.switch_to.window(driver.window_handles[0])
+            return True
             break
         except:
             continue
+    return False
 
 def parse_outer_html_href(el):
     soup = BeautifulSoup(el.get_attribute("outerHTML"), features="html.parser")
@@ -473,17 +508,70 @@ def print_stats_report(invalid_url_list):
         print(url)
     print("-----------------------------------------------------\n")
 
+def test_403(url_list):
+    """
+        Description:
+            Cleans, scrapes, and clicks every link on a given URL
+        Args:
+            url: url of string to scrape
+            image_location: string path to image file in system.
+            headless: determines whether to run browser in headless mode
+        Returns:
+            String
+        """
+
+    url = url_list[0]
+    print(url)
+    image_location = url_list[1]
+    rank = url_list[2]
+    detected = False
+
+    options = Options()
+    options.headless = True
+
+    browser_profile = webdriver.FirefoxProfile()
+    browser_profile.set_preference("dom.webnotifications.enabled", False)
+
+    try:
+        driver = webdriver.Firefox(options=options, firefox_profile=browser_profile)
+    except:
+        sys.stdout.flush()
+        print(str(rank) + " " + url + " failed_driver")
+        return str(rank) + " " + url + " failed_driver"
+
+    try:
+        driver.get(url)
+    except:
+        sys.stdout.flush()
+        print(str(rank) + " " + url + " " + " failed_url")
+        driver.quit()
+        return str(rank) + " " + url + " failed_url"
+
+    driver.maximize_window()
+
+    # changes all links open in new tabs
+
+    if "403 Forbidden" in driver.page_source:
+        error_403_url_list.append(url)
+        sys.stdout.flush()
+        print(str(rank) + " " + url + " Failed_403")
+        driver.quit()
+        return str(rank) + " " + url + " Failed_403"
+
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('file', type=str)
+    args = parser.parse_args()
 
-    # main(("https://www.google.com/search?q=sonic&rlz=1C1CHBF_enUS782US782&oq=sonic&aqs=chrome..69i57j69i60l3j69i59l2.760j0j4&sourceid=chrome&ie=UTF-8", "images_sonic\\"))
     num_websites_to_crawl = 20
     start = time.time()
     print(start)
-    with open('top_mil_chunk4.csv', newline='\n') as csvfile:
+    with open(args.file, newline='\n') as csvfile:
         data = list(csv.reader(csvfile))
     urls_list = [("https://www." + url[1], "images_" + url[1] + "/", url[0]) for url in data]
     i=0
+    print (len(urls_list))
     while i < len(urls_list):
         urls_list_subset = urls_list[i:i+num_websites_to_crawl]
         print(urls_list_subset)
