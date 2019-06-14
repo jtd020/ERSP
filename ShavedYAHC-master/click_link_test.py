@@ -571,7 +571,6 @@ if __name__ == "__main__":
         data = list(csv.reader(csvfile))
     urls_list = [("https://www." + url[1], "images_" + url[1] + "/", url[0]) for url in data]
     i=0
-    print (len(urls_list))
     while i < len(urls_list):
         urls_list_subset = urls_list[i:i+num_websites_to_crawl]
         print(urls_list_subset)
