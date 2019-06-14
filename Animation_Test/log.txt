@@ -1,0 +1,79 @@
+----------------- Statistics Report -----------------
+animation removal sucess rate: 89.21775898520085%
+total websites: 543
+valid websites: 473
+invalid websites due to incorrect protocol: 58
+forbidden websites (error 403) : 12
+percent of invalid websites encountered: 12.89134438305709%
+invalid url list:
+https://qq.com
+https://alipay.com
+https://gmw.cn
+https://microsoftonline.com
+https://163.com
+https://pixnet.net
+https://iqiyi.com
+https://xinhuanet.com
+https://amazonaws.com
+https://ropleftinwaref.info
+https://enoughts.info
+https://65vk1fba34.com
+https://cjl58f3agc.com
+https://6uwehz1xp4.com
+https://myornamenti.com
+https://allornamenti.com
+https://globo.com
+https://jf71qh5v14.com
+https://twimg.com
+https://caijing.com.cn
+https://ifeng.com
+https://china.com.cn
+https://ltn.com.tw
+https://hdrezka.ag
+https://uod2quk646.com
+https://remtoaku.net
+https://greatdexchange.com
+https://52pojie.cn
+https://adexchangegate.com
+https://baike.com
+https://3dmgame.com
+https://rednet.cn
+https://livedoor.jp
+https://browsergames2019.com
+https://huanqiu.com
+https://hupu.com
+https://dmm.co.jp
+https://ikea.com
+https://friv.com
+https://cdninstagram.com
+https://zol.com.cn
+https://bp.blogspot.com
+https://reverso.net
+https://keyrolan.com
+https://cambridge.org
+https://17ok.com
+https://onclicksuper.com
+https://bogarencalbet.info
+https://force.com
+https://mlb.com
+https://livedoor.com
+https://nhk.or.jp
+https://cloudfront.net
+https://360doc.com
+https://espncricinfo.com
+https://ptt.cc
+https://autohome.com.cn
+https://jrj.com.cn
+https://perfecttoolmedia.com
+https://youth.cn
+https://ali213.net
+https://focuusing.com
+https://asus.com
+https://rutor.info
+https://seasonvar.ru
+https://cornshub.com
+https://cnzz.com
+https://wixsite.com
+https://cornsapp.com
+https://178.com
+-----------------------------------------------------
